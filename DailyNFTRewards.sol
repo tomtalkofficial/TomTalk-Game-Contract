@@ -2,32 +2,35 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+// import "@openzeppelin/contracts/access/AccessControl.sol";
 
 
-contract DailyNFTRewards is ERC721, Ownable {
+contract DailyNFTRewards is ERC721 {
+
+    bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
+
     uint256 private _currentId;
 
     // Enum to represent NFT categories
     enum NFTCategory { Theta, Beta, Alpha, Sigma }
 
     // Mapping from token ID to NFT category
-    mapping(uint256 => NFTCategory) private _tokenCategories;
+    mapping(uint256 => NFTCategory) public tokenCategories;
 
     // Mapping from address to first claimed timestamp
-    mapping(address => uint256) private _firstClaimedTime;
+    mapping(address => uint256) public firstClaimedTime;
 
     // Mapping from address to last claimed timestamp
-    mapping(address => uint256) private _lastClaimedTime;
+    mapping(address => uint256) public lastClaimedTime;
 
-    // Mapping from address to list of claimed token IDs
-    mapping(address => uint256[]) private _claimHistory;
+    // // Mapping from address to list of claimed token IDs
+    // mapping(address => uint256[]) public claimHistory;
 
-    // Mapping from address to list of burned token IDs
-    mapping(address => uint256[]) private _burnHistory;
+    // // Mapping from address to list of burned token IDs
+    // mapping(address => uint256[]) public burnHistory;
     
     // Mapping from NFT category to base URI
-    mapping(NFTCategory => string) private _categoryBaseURIs;
+    mapping(NFTCategory => string) public categoryBaseURIs;
 
     // Events for claim and burn
     event NFTClaimed(address indexed user, uint256 indexed tokenId, NFTCategory category, uint256 timestamp);
@@ -43,13 +46,12 @@ contract DailyNFTRewards is ERC721, Ownable {
         string memory sigmaBaseURI
     ) ERC721("DailyNFTRewards", "DNR") {
 
-        _categoryBaseURIs[NFTCategory.Theta] = thetaBaseURI;
-        _categoryBaseURIs[NFTCategory.Beta] = betaBaseURI;
-        _categoryBaseURIs[NFTCategory.Alpha] = alphaBaseURI;
-        _categoryBaseURIs[NFTCategory.Sigma] = sigmaBaseURI;
+        categoryBaseURIs[NFTCategory.Theta] = thetaBaseURI;
+        categoryBaseURIs[NFTCategory.Beta] = betaBaseURI;
+        categoryBaseURIs[NFTCategory.Alpha] = alphaBaseURI;
+        categoryBaseURIs[NFTCategory.Sigma] = sigmaBaseURI;
+
     }
-
-
 
     /**
      * @dev Internal function to determine the current NFT category based on the number 
@@ -59,7 +61,7 @@ contract DailyNFTRewards is ERC721, Ownable {
      * @return The current NFT category to be assigned.
      */
     function _getCurrentNFTCategory(address user) internal view returns (NFTCategory) {
-        uint256 daysSinceStart = (block.timestamp - _firstClaimedTime[user]) / 1 days;
+        uint256 daysSinceStart = (block.timestamp - firstClaimedTime[user]) / 1 days;
         
         if (daysSinceStart < 7) {
             return NFTCategory.Theta;
@@ -77,18 +79,18 @@ contract DailyNFTRewards is ERC721, Ownable {
      * Emits an {NFTClaimed} event.
      */
     function claimNFT() external {
-        require(block.timestamp - _lastClaimedTime[msg.sender] >= 1 days, "Claim once every 24 hours.");
+        require(block.timestamp - lastClaimedTime[msg.sender] >= 1 days, "Claim once every 24 hours.");
 
-        _lastClaimedTime[msg.sender] = block.timestamp;
+        lastClaimedTime[msg.sender] = block.timestamp;
 
-        if(_firstClaimedTime[msg.sender] == 0)
-          _firstClaimedTime[msg.sender] = block.timestamp;
+        if(firstClaimedTime[msg.sender] == 0)
+          firstClaimedTime[msg.sender] = block.timestamp;
         
         NFTCategory category = _getCurrentNFTCategory(msg.sender);
         uint256 newItemId = _mintNFT(msg.sender, category);
 
         // Record claim in history
-        _claimHistory[msg.sender].push(newItemId);
+        // claimHistory[msg.sender].push(newItemId);
         emit NFTClaimed(msg.sender, newItemId, category, block.timestamp);
     }
 
@@ -102,7 +104,7 @@ contract DailyNFTRewards is ERC721, Ownable {
     function _mintNFT(address recipient, NFTCategory category) internal returns (uint256) {
         uint256 newItemId = _currentId++;
         _mint(recipient, newItemId);
-        _tokenCategories[newItemId] = category;
+        tokenCategories[newItemId] = category;
         return newItemId;
     }
 
@@ -117,61 +119,10 @@ contract DailyNFTRewards is ERC721, Ownable {
         _burn(tokenId);
 
         // Record burn in history
-        _burnHistory[msg.sender].push(tokenId);
+        // burnHistory[msg.sender].push(tokenId);
         emit NFTBurned(msg.sender, tokenId, block.timestamp);
 
         // Unlock the daily reward logic here
-    }
-
-    /**
-     * @dev Function to get the category of a specific NFT.
-     * 
-     * @param tokenId The token ID of the NFT.
-     * @return The category of the NFT.
-     */
-    function getNFTCategory(uint256 tokenId) external view returns (NFTCategory) {
-        // require(_exists(tokenId), "Token does not exist.");
-        return _tokenCategories[tokenId];
-    }
-
-    /**
-     * @dev Function to get the last claimed timestamp for a user.
-     * 
-     * @param user The address of the user.
-     * @return The timestamp when the user last claimed an NFT.
-     */
-    function getLastClaimedTime(address user) external view returns (uint256) {
-        return _lastClaimedTime[user];
-    }
-
-    /**
-     * @dev Function to get the claim history of a user.
-     * 
-     * @param user The address of the user.
-     * @return An array of token IDs that the user has claimed.
-     */
-    function getClaimHistory(address user) external view returns (uint256[] memory) {
-        return _claimHistory[user];
-    }
-
-    /**
-     * @dev Function to get the burn history of a user.
-     * 
-     * @param user The address of the user.
-     * @return An array of token IDs that the user has burned.
-     */
-    function getBurnHistory(address user) external view returns (uint256[] memory) {
-        return _burnHistory[user];
-    }
-
-    /**
-     * @dev Function to set the base URI for an NFT category.
-     *
-     * @param category The category for which the base URI is set.
-     * @param baseURI The new base URI to be set.
-     */
-    function setCategoryBaseURI(NFTCategory category, string memory baseURI) external onlyOwner {
-        _categoryBaseURIs[category] = baseURI;
     }
 
     /**
@@ -181,8 +132,8 @@ contract DailyNFTRewards is ERC721, Ownable {
      * @return The base URI string.
      */
     function _baseURI(uint256 tokenId) internal view returns (string memory) {
-        NFTCategory category = _tokenCategories[tokenId];
-        return _categoryBaseURIs[category];
+        NFTCategory category = tokenCategories[tokenId];
+        return categoryBaseURIs[category];
     }
 
     /**
